@@ -1,0 +1,15 @@
+# Dependabot version updates — fleet security standard.
+# Weekly, every ecosystem present in the repository, zero ignored updates.
+# Gradle manifests live in /VirtualApp (settings.gradle, app/build.gradle,
+# lib/build.gradle). No ignores — semver-major updates stay visible per the
+# fleet rule.
+version: 2
+updates:
+  - package-ecosystem: "gradle"
+    directory: "/VirtualApp"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

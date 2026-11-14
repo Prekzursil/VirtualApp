@@ -1,0 +1,92 @@
+# Advanced CodeQL analysis — fleet security standard.
+#
+# Per the fleet CODEQL decision: advanced (workflow) configuration with the
+# security-extended + security-and-quality suites (strictly subsumes the
+# default and extended suites), matrix over every language this repository
+# actually has (java-kotlin + c-cpp), triggered on push to master, pull
+# requests targeting master, and a weekly schedule. Results upload to code
+# scanning with a category per language.
+#
+# Build modes:
+#   java-kotlin : none   — the extractor parses sources directly; the 2017
+#                          Gradle 4.1 / AGP 3.0.1 Android build is not needed.
+#   c-cpp       : manual — the native code is the JNI library under
+#                          VirtualApp/lib/src/main/jni, built here with
+#                          era-matched NDK r17c ndk-build (the Application.mk
+#                          requires gnustl_static, which was removed from the
+#                          NDK after r17; r17c is the newest NDK that can
+#                          build it unmodified).
+name: CodeQL
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-22.04
+    permissions:
+      # upload-sarif to code scanning
+      security-events: write
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: java-kotlin
+            build-mode: none
+          - language: c-cpp
+            build-mode: manual
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # NDK r17c is required to build the JNI sources (gnustl_static was
+      # removed in NDK r18). ~600 MB download, cached by the actions/setup
+      # Android SDK layout via actions/cache below.
+      - name: Install Android NDK r17c (c-cpp only)
+        if: matrix.language == 'c-cpp'
+        run: |
+          set -euo pipefail
+          SDKMANAGER="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          yes | "$SDKMANAGER" "ndk;17.2.4988734" > /dev/null
+          test -d "${ANDROID_SDK_ROOT}/ndk/17.2.4988734"
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-extended,security-and-quality
+
+      # Manual build for c-cpp: run ndk-build against the module's
+      # Android.mk exactly as AGP's externalNativeBuild does. Every compiled
+      # translation unit is traced and extracted.
+      - name: Build native JNI library (ndk-build)
+        if: matrix.language == 'c-cpp'
+        working-directory: VirtualApp/lib
+        run: |
+          set -euo pipefail
+          NDK="${ANDROID_SDK_ROOT}/ndk/17.2.4988734"
+          "$NDK/ndk-build" \
+            APP_BUILD_SCRIPT="$PWD/src/main/jni/Android.mk" \
+            NDK_PROJECT_PATH=null \
+            NDK_APPLICATION_MK="$PWD/src/main/jni/Application.mk" \
+            APP_ABI="armeabi-v7a" \
+            APP_PLATFORM=android-14
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
