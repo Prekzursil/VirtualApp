@@ -57,10 +57,11 @@ jobs:
       - name: Install Android NDK r17c (c-cpp only)
         if: matrix.language == 'c-cpp'
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           SDKMANAGER="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDKMANAGER" --licenses > /dev/null || true
-          yes | "$SDKMANAGER" "ndk;17.2.4988734" > /dev/null
+          "$SDKMANAGER" --version
+          yes | "$SDKMANAGER" --licenses || true
+          "$SDKMANAGER" --install "ndk;17.2.4988734" 2>&1 | tail -20
           test -d "${ANDROID_SDK_ROOT}/ndk/17.2.4988734"
 
       - name: Initialize CodeQL
